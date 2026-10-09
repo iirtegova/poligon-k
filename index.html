@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Карта мировых потоков СПГ — 2025 / Цены март 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7" onerror="window._d3fail=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3" onerror="window._d3fail=true"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #1a1d26;
+  --bg-panel: rgba(30,34,46,0.92);
+  --border: #2e3344;
+  --text: #8a92a6;
+  --text-bright: #d0d6e2;
+  --heading: #eef1f7;
+  --accent: #3b82f6;
+  --export: #f59e0b;
+  --import: #6366f1;
+  --flow: rgba(59, 130, 246, 0.55);
+  --hub: #10b981;
+  --danger: #ef4444;
+  --sans: 'DM Sans', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+}
+#map-container {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  position: relative;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+svg { width: 100%; height: 100%; display: block; touch-action: none; }
+
+
+
+.title-bar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 0.7rem 1.5rem;
+  background: linear-gradient(to bottom, rgba(26,29,38,0.97), transparent);
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+.title-bar h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--heading);
+  letter-spacing: -0.01em;
+}
+.title-bar .subtitle {
+  font-size: 0.65rem;
+  color: var(--text);
+  font-weight: 400;
+}
+.title-bar .crisis-tag {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--danger);
+  padding: 0.2em 0.6em;
+  border-radius: 4px;
+  animation: pulse-tag 2s infinite;
+}
+@keyframes pulse-tag {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.legend {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+  z-index: 10;
+  backdrop-filter: blur(16px);
+  min-width: 180px;
+}
+.legend-title {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin-bottom: 0.7rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--text-bright);
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-line {
+  width: 24px;
+  height: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+
+
+.stats-panel {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+  z-index: 10;
+  backdrop-filter: blur(16px);
+  max-width: 280px;
+}
+.stats-title {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin-bottom: 0.6rem;
+}
+.stats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  font-size: 0.78rem;
+}
+.stats-rank {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text);
+  width: 1.2rem;
+}
+.stats-country {
+  flex: 1;
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.stats-bar-wrap {
+  width: 80px;
+  height: 6px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.stats-bar {
+  height: 100%;
+  border-radius: 3px;
+}
+.stats-val {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--heading);
+  width: 3.5rem;
+  text-align: right;
+}
+
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.78rem;
+  color: var(--text-bright);
+  z-index: 100;
+  backdrop-filter: blur(16px);
+  max-width: 280px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.tooltip.show { opacity: 1; }
+.tooltip-name {
+  font-weight: 700;
+  color: var(--heading);
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.tooltip-role {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.3rem;
+}
+.tooltip-role.exporter { color: var(--export); }
+.tooltip-role.importer { color: var(--import); }
+.tooltip-vol {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  color: var(--heading);
+  font-weight: 600;
+}
+.tooltip-compare {
+  font-size: 0.7rem;
+  color: var(--text);
+  margin-top: 0.15rem;
+}
+
+.controls {
+  position: absolute;
+  top: 3.5rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  z-index: 10;
+}
+.ctrl-btn {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-bright);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+  backdrop-filter: blur(16px);
+}
+.ctrl-btn:hover {
+  background: rgba(59,130,246,0.18);
+  border-color: var(--accent);
+}
+
+
+
+/* ───── Mobile panels toggle ───── */
+.mobile-tabs {
+  display: none;
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  z-index: 20;
+  background: rgba(26,29,38,0.97);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+}
+.mobile-tabs-inner {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mob-tab {
+  flex: 1;
+  padding: 0.7rem 0.5rem;
+  font-family: var(--sans);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  border-top: 2px solid transparent;
+}
+.mob-tab.active {
+  color: var(--accent);
+  border-top-color: var(--accent);
+}
+
+.mobile-panel {
+  display: none;
+  position: absolute;
+  bottom: 3rem; left: 0; right: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  z-index: 19;
+  padding: 1rem;
+}
+.mobile-panel.show { display: block; }
+
+/* ───── Mobile responsive ───── */
+@media (max-width: 768px) {
+  .stats-panel { display: none; }
+  .legend {
+    top: 3rem;
+    bottom: auto;
+    left: 0;
+    right: 0;
+    min-width: auto;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    padding: 0.4rem 0.8rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(30,34,46,0.88);
+    backdrop-filter: blur(12px);
+  }
+  .legend-title {
+    font-size: 0.5rem;
+    margin-bottom: 0;
+    margin-right: 0.3rem;
+  }
+  .legend-item {
+    font-size: 0.62rem;
+    margin-bottom: 0;
+  }
+  .legend-dot { width: 6px; height: 6px; }
+  .legend-line { width: 16px; }
+  .mobile-tabs { display: block; }
+  .controls {
+    top: auto;
+    bottom: 1rem;
+    right: 0.5rem;
+    left: auto;
+  }
+  .ctrl-btn { width: 40px; height: 40px; font-size: 1.2rem; }
+  .title-bar { padding: 0.6rem 0.8rem; }
+  .title-bar h1 { font-size: 0.85rem; }
+  .title-bar .subtitle { font-size: 0.55rem; }
+  .crisis-tag { font-size: 0.45rem; }
+  .tooltip { font-size: 0.7rem; max-width: 200px; }
+}
+
+@media (min-width: 769px) {
+  .mobile-tabs { display: none !important; }
+  .mobile-panel { display: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="map-container">
+  <!-- Fallback: shows while loading, replaced by map on success -->
+  <div id="map-fallback" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:50;background:var(--bg);text-align:center;padding:2rem;">
+    <div id="fb-spinner" style="width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:1.2rem;"></div>
+    <div id="fb-text" style="color:var(--text);font-size:0.85rem;max-width:320px;line-height:1.6;">Загружаем карту...</div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+  <noscript>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;background:var(--bg);text-align:center;padding:2rem;">
+      <div style="color:var(--text);font-size:0.9rem;max-width:340px;line-height:1.7;">
+        Для отображения интерактивной карты необходимо включить JavaScript в настройках браузера.
+      </div>
+    </div>
+  </noscript>
+
+  <div class="title-bar">
+    <div>
+      <h1>Глобальные потоки СПГ · 2025</h1>
+      <div class="subtitle">Экспорт и импорт (MTPA) · Данные 2025 года <span class="crisis-tag">Ормуз закрыт</span></div>
+    </div>
+  </div>
+
+
+
+  <div class="controls">
+    <button class="ctrl-btn" id="zoom-in">+</button>
+    <button class="ctrl-btn" id="zoom-out">−</button>
+    <button class="ctrl-btn" id="zoom-reset">⌂</button>
+  </div>
+
+
+  <div class="legend">
+    <div class="legend-title">Обозначения</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--export)"></div>Экспортёр</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--import)"></div>Импортёр</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--danger);box-shadow:0 0 8px var(--danger)"></div>Ормуз · закрыт</div>
+    <div class="legend-item"><div class="legend-line" style="background:linear-gradient(90deg,var(--export),var(--import))"></div>Торговый поток</div>
+    <div class="legend-item" style="font-size:0.62rem;color:var(--text)">Толщина линии = объём (MTPA) · 2025</div>
+  </div>
+
+  <!-- Mobile panels -->
+  <div class="mobile-tabs">
+    <div class="mobile-tabs-inner">
+      <button class="mob-tab" data-panel="mob-exporters">Экспортёры</button>
+      <button class="mob-tab" data-panel="mob-legend">Легенда</button>
+    </div>
+  </div>
+
+  </div>
+
+  <div class="mobile-panel" id="mob-exporters"></div>
+  <div class="mobile-panel" id="mob-legend">
+    <div class="legend-title">Обозначения</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--export)"></div>Экспортёр (размер = объём MTPA)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--import)"></div>Импортёр</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--danger);box-shadow:0 0 8px var(--danger)"></div>Ормуз · закрыт</div>
+    <div class="legend-item" style="margin-top:0.5rem;font-size:0.7rem;color:var(--text)">Нажмите на круг для деталей. Данные — 2025 год (Kpler/EIA/GIIGNL)</div>
+  </div>
+
+  <div class="tooltip" id="tooltip"></div>
+
+
+</div>
+
+<script>
+// Check if D3 and TopoJSON loaded from CDN
+if (typeof d3 === 'undefined' || typeof topojson === 'undefined' || window._d3fail) {
+  const fb = document.getElementById('map-fallback');
+  if (fb) {
+    const spinner = document.getElementById('fb-spinner');
+    if (spinner) spinner.style.display = 'none';
+    const txt = document.getElementById('fb-text');
+    const url = window.location.href;
+    if (txt) txt.innerHTML = '<div style="font-size:2rem;margin-bottom:1rem;">🗺️</div>' +
+      '<div style="color:#eef1f7;font-size:1rem;font-weight:600;margin-bottom:0.6rem;">Карта не загрузилась</div>' +
+      '<div style="color:#8a92a6;font-size:0.82rem;line-height:1.6;margin-bottom:1.2rem;">' +
+      'Встроенный браузер не поддерживает интерактивную карту.<br>Откройте в полноценном браузере:</div>' +
+      '<a href="' + url + '" target="_blank" rel="noopener" style="' +
+        'display:inline-block;background:#3b82f6;color:#fff;font-size:0.9rem;font-weight:600;' +
+        'padding:0.7rem 1.5rem;border-radius:8px;text-decoration:none;margin-bottom:0.8rem;' +
+        'box-shadow:0 4px 12px rgba(59,130,246,0.3);">' +
+        '↗ Открыть в Safari</a>' +
+      '<div style="color:#6b7280;font-size:0.7rem;margin-top:0.5rem;">или скопируйте ссылку:</div>' +
+      '<div style="color:#8a92a6;font-family:monospace;font-size:0.65rem;margin-top:0.4rem;' +
+        'background:rgba(255,255,255,0.05);padding:0.4rem 0.6rem;border-radius:4px;word-break:break-all;">' + url + '</div>';
+  }
+} else {
+
+// ══════════════════════════════════════════
+// 2025 DATA (Kpler, EIA, GIIGNL, Reuters)
+// ══════════════════════════════════════════
+
+const exporters = [
+  { id:"USA", name:"США", lat:30, lon:-90, vol:111, vol24:88.4, details:"Sabine Pass, Freeport, Corpus Christi, Cameron, Calcasieu Pass, Plaquemines Ph.1" },
+  { id:"QAT", name:"Катар", lat:25.3, lon:51.2, vol:82, vol24:77.2, details:"Ras Laffan (14 линий). ФОРС-МАЖОР с 4.03.2026" },
+  { id:"AUS", name:"Австралия", lat:-25, lon:134, vol:79, vol24:81.0, details:"NWS, Gorgon, Wheatstone, Ichthys, APLNG, QCLNG" },
+  { id:"RUS", name:"Россия", lat:68, lon:73, vol:32.5, vol24:33.5, details:"Yamal LNG (20 MT), Сахалинская Энергия (10,3), Arctic LNG-2 (~1 MT), прочие (~0,8)" },
+  { id:"MYS", name:"Малайзия", lat:4.5, lon:109, vol:27, vol24:27.7, details:"Bintulu Complex (Petronas, 9 линий), PFLNG Satu/Dua" },
+  { id:"IDN", name:"Индонезия", lat:-2, lon:118, vol:17.6, vol24:21.0, details:"Tangguh, Bontang, Donggi-Senoro. Рост внутр. потребления" },
+  { id:"NGA", name:"Нигерия", lat:5, lon:4, vol:15.5, vol24:13.8, details:"Bonny Island NLNG (6 линий). Загрузка ~59%" },
+  { id:"DZA", name:"Алжир", lat:32, lon:2, vol:8.0, vol24:11.6, details:"Arzew, Skikda. Загрузка ~25% — приоритет трубопроводу" },
+  { id:"TTO", name:"Тринидад", lat:10.5, lon:-61.3, vol:9.0, vol24:11.4, details:"Atlantic LNG (загрузка ~85% без Line 1)" },
+  { id:"OMN", name:"Оман", lat:22, lon:57, vol:11.3, vol24:10.5, details:"Oman LNG + Qalhat LNG" },
+  { id:"PNG", name:"ПНГ", lat:-6, lon:147, vol:7.5, vol24:8.0, details:"PNG LNG (ExxonMobil)" },
+  { id:"ARE", name:"ОАЭ", lat:24, lon:54, vol:5.0, vol24:5.8, details:"Das Island (ADGAS)" },
+  { id:"BRN", name:"Бруней", lat:4.9, lon:114.9, vol:4.5, vol24:5.5, details:"Lumut LNG" },
+  { id:"NOR", name:"Норвегия", lat:71, lon:25, vol:4.5, vol24:4.6, details:"Hammerfest LNG (Melkøya)" },
+  { id:"PER", name:"Перу", lat:-12, lon:-77, vol:3.7, vol24:4.0, details:"Peru LNG (Pampa Melchorita)" },
+  { id:"MOZ", name:"Мозамбик", lat:-14, lon:40, vol:3.5, vol24:3.4, details:"Coral Sul FLNG (Eni) — загрузка 109%" },
+  { id:"GNQ", name:"Экв. Гвинея", lat:2, lon:9, vol:2.0, vol24:2.8, details:"EG LNG (Marathon)" },
+  { id:"AGO", name:"Ангола", lat:-8, lon:13, vol:3.0, vol24:3.7, details:"Angola LNG (Soyo)" },
+  { id:"CMR", name:"Камерун", lat:3.5, lon:9.5, vol:1.5, vol24:1.5, details:"Hilli Episeyo FLNG (Golar)" },
+  { id:"EGY", name:"Египет", lat:30, lon:31, vol:1.0, vol24:1.6, details:"ELNG, SEGAS. Переходит к нетто-импорту (добыча −35% г/г)" },
+  { id:"CAN", name:"Канада", lat:54, lon:-129, vol:4, vol24:0, details:"LNG Canada (Kitimat) — первый СПГ-завод страны. Запуск 1.07.2025" },
+  { id:"MRT", name:"Мавритания/Сенегал", lat:16, lon:-16.5, vol:1.5, vol24:0.3, details:"GTA FLNG Phase 1 (BP/Kosmos) — запуск апрель 2025" },
+];
+
+const importers = [
+  { id:"JPN", name:"Япония", lat:36, lon:139, vol:66, vol24:67.7, details:"Вернула статус №1 импортёра. Перепродажа 40% объёмов" },
+  { id:"CHN", name:"Китай", lat:32, lon:116, vol:66, vol24:78.6, details:"Сократил импорт на 16,5%. Переход на трубопроводный газ" },
+  { id:"KOR", name:"Южная Корея", lat:36, lon:128, vol:46, vol24:47.0, details:"KOGAS — крупнейший покупатель. Катар → Корея −20,8%" },
+  { id:"IND", name:"Индия", lat:21, lon:78, vol:24, vol24:26.2, details:"Снижение −8%. Замещение альтернативным топливом" },
+  { id:"TWN", name:"Тайвань", lat:23.5, lon:121, vol:22, vol24:21.8, details:"CPC Corporation. CPC Corporation" },
+  { id:"FRA", name:"Франция", lat:47, lon:2, vol:17, vol24:18.0, details:"Dunkerque, Montoir, Fos-sur-Mer" },
+  { id:"TUR", name:"Турция", lat:39, lon:33, vol:15, vol24:11.5, details:"Aliaga, Dortyol FSRU" },
+  { id:"NLD", name:"Нидерланды", lat:52, lon:5, vol:15, vol24:13.3, details:"Gate Terminal, Rotterdam. Рост на фоне потери рос. транзита" },
+  { id:"ESP", name:"Испания", lat:40, lon:-4, vol:13, vol24:12.5, details:"6 терминалов. Крупный импортёр рос. СПГ" },
+  { id:"ITA", name:"Италия", lat:42, lon:12, vol:9, vol24:8.0, details:"Rovigo, OLT, FSRU Toscana — новые мощности" },
+  { id:"GBR", name:"Великобритания", lat:54, lon:-1, vol:8, vol24:8.0, details:"Isle of Grain, South Hook, Dragon" },
+  { id:"EGY_imp", name:"Египет (импорт)", lat:31.5, lon:32.5, vol:8.9, vol24:3.5, details:"Переход к нетто-импорту, добыча −35% г/г" },
+  { id:"THA", name:"Таиланд", lat:14, lon:100, vol:6.5, vol24:7.0, details:"Map Ta Phut" },
+  { id:"BEL", name:"Бельгия", lat:50.5, lon:4.4, vol:7.5, vol24:7.0, details:"Зебрюгге Terminal" },
+  { id:"BGD", name:"Бангладеш", lat:24, lon:90, vol:3.5, vol24:4.0, details:"Moheshkhali FSRU" },
+  { id:"PAK", name:"Пакистан", lat:27, lon:67, vol:5.5, vol24:6.5, details:"Port Qasim FSRU" },
+  { id:"BRA", name:"Бразилия", lat:-15, lon:-47, vol:5.5, vol24:5.5, details:"Pecem, Bahia, Guanabara Bay FSRU" },
+  { id:"DEU", name:"Германия", lat:53.5, lon:10, vol:5.5, vol24:5.5, details:"Brunsbüttel, Wilhelmshaven FSRU" },
+  { id:"POL", name:"Польша", lat:52, lon:20, vol:5, vol24:4.5, details:"Swinoujscie + FSRU Gdansk" },
+  { id:"SGP", name:"Сингапур", lat:1.3, lon:103.8, vol:4, vol24:4.5, details:"SLNG Terminal, Jurong Island" },
+  { id:"ARG", name:"Аргентина", lat:-35, lon:-60, vol:2.5, vol24:3.0, details:"Bahia Blanca, Escobar FSRU. Vaca Muerta снижает импорт" },
+];
+
+// Major trade flows 2025 [from_id, to_id, vol_mtpa]
+const flows = [
+  // USA flows — значительный рост, доля Европы 53%, Азии 33%
+  ["USA","FRA",12],["USA","NLD",8],["USA","ESP",6.5],["USA","GBR",8],
+  ["USA","ITA",4],["USA","DEU",4],["USA","BEL",4],["USA","POL",3.5],
+  ["USA","TUR",7],["USA","JPN",6],["USA","KOR",7],["USA","CHN",6],
+  ["USA","IND",5],["USA","BRA",4],["USA","ARG",2],["USA","TWN",3],
+  // Qatar flows
+  ["QAT","CHN",16],["QAT","IND",9],["QAT","KOR",10],["QAT","JPN",13],
+  ["QAT","TWN",7],["QAT","PAK",5.5],["QAT","BGD",3.5],["QAT","THA",3],
+  ["QAT","GBR",2],["QAT","EGY_imp",3],
+  // Australia flows
+  ["AUS","JPN",28],["AUS","CHN",22],["AUS","KOR",12],["AUS","TWN",7],
+  ["AUS","SGP",3],["AUS","THA",2.5],["AUS","IND",3],
+  // Russia flows — Yamal 20MT, Sakhalin 10.3MT, Arctic ~1MT, other ~0.8MT
+  ["RUS","FRA",4.5],["RUS","BEL",3],["RUS","ESP",3],["RUS","CHN",9],
+  ["RUS","JPN",6.5],["RUS","KOR",3.5],["RUS","IND",2],["RUS","TWN",1],
+  // Malaysia
+  ["MYS","JPN",8],["MYS","CHN",5],["MYS","KOR",5],["MYS","TWN",4],
+  ["MYS","IND",2.5],["MYS","SGP",1],
+  // Nigeria — 15.5 MT
+  ["NGA","ESP",2.5],["NGA","FRA",2.5],["NGA","ITA",2],["NGA","TUR",3],
+  ["NGA","IND",2],["NGA","CHN",1.5],["NGA","POL",1],
+  // Algeria — 8 MT (utilization ~25%, priority to pipeline)
+  ["DZA","ESP",2],["DZA","FRA",2],["DZA","ITA",2],["DZA","TUR",1.5],
+  // Indonesia — 17.6 MT (down from 21, domestic consumption growth)
+  ["IDN","JPN",4.5],["IDN","KOR",3.5],["IDN","CHN",3.5],["IDN","TWN",2.5],["IDN","SGP",1],
+  // Trinidad — 9 MT (down from 11.4)
+  ["TTO","ESP",1.5],["TTO","GBR",1],["TTO","BRA",1.5],["TTO","ARG",0.8],
+  ["TTO","CHN",1.2],["TTO","NLD",1],
+  // Oman — 11.3 MT
+  ["OMN","KOR",4.5],["OMN","JPN",3.5],["OMN","CHN",2.5],
+  // PNG
+  ["PNG","JPN",4],["PNG","CHN",2.5],
+  // Canada — NEW
+  ["CAN","JPN",1.5],["CAN","CHN",1],["CAN","KOR",1],
+  // Mauritania — NEW
+  ["MRT","ESP",0.5],["MRT","FRA",0.5],
+];
+
+// Price hubs map markers
+
+const hormuz = { lat:26.5, lon:56.5 };
+
+// ══════════════════════════════════════════
+// MAP
+// ══════════════════════════════════════════
+const container = document.getElementById('map-container');
+const width = container.clientWidth;
+const height = container.clientHeight;
+
+const svg = d3.select('#map-container').append('svg').attr('viewBox',`0 0 ${width} ${height}`);
+const projection = d3.geoNaturalEarth1().scale(width/4.2).translate([width/2, height/2+60]);
+const path = d3.geoPath().projection(projection);
+const g = svg.append('g');
+
+const zoom = d3.zoom().scaleExtent([0.3,8]).on('zoom', e => g.attr('transform', e.transform));
+svg.call(zoom);
+d3.select('#zoom-in').on('click', () => svg.transition().call(zoom.scaleBy,1.5));
+d3.select('#zoom-out').on('click', () => svg.transition().call(zoom.scaleBy,1/1.5));
+d3.select('#zoom-reset').on('click', () => svg.transition().call(zoom.transform, d3.zoomIdentity));
+
+const tooltip = d3.select('#tooltip');
+function showTooltip(event, html) {
+  const x = event.touches ? event.touches[0].pageX : event.pageX;
+  const y = event.touches ? event.touches[0].pageY : event.pageY;
+  tooltip.html(html)
+    .style('left', Math.min(x + 15, window.innerWidth - 250) + 'px')
+    .style('top', Math.max(y - 10, 10) + 'px')
+    .classed('show', true);
+}
+function hideTooltip() { tooltip.classed('show',false); }
+
+const worldUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+
+d3.json(worldUrl).then(world => {
+  // Map loaded — hide fallback
+  const fb = document.getElementById('map-fallback');
+  if (fb) fb.style.display = 'none';
+
+  const countries = topojson.feature(world, world.objects.countries);
+  const defs = svg.append('defs');
+
+  const oceanGrad = defs.append('radialGradient').attr('id','oceanGrad').attr('cx','40%').attr('cy','45%').attr('r','65%');
+  oceanGrad.append('stop').attr('offset','0%').attr('stop-color','#1e2230');
+  oceanGrad.append('stop').attr('offset','100%').attr('stop-color','#1a1d26');
+
+  const hubGlow = defs.append('filter').attr('id','hubGlow');
+  hubGlow.append('feGaussianBlur').attr('stdDeviation','6').attr('result','blur');
+  const hm = hubGlow.append('feMerge');
+  hm.append('feMergeNode').attr('in','blur');
+  hm.append('feMergeNode').attr('in','SourceGraphic');
+
+  g.append('path').datum({type:'Sphere'}).attr('d',path).attr('fill','url(#oceanGrad)').attr('stroke','#1a2035').attr('stroke-width',0.5);
+  g.append('path').datum(d3.geoGraticule()()).attr('d',path).attr('fill','none').attr('stroke','#2d3245').attr('stroke-width',0.3);
+  g.selectAll('.country').data(countries.features).enter().append('path').attr('d',path).attr('fill','#2f3448').attr('stroke','#464c62').attr('stroke-width',0.4);
+
+  const allNodes = {};
+  exporters.forEach(e => allNodes[e.id] = e);
+  importers.forEach(i => allNodes[i.id] = i);
+  const maxFlowVol = d3.max(flows, d => d[2]);
+
+  const flowGroup = g.append('g').attr('class','flows');
+
+  function drawFlows() {
+    flowGroup.selectAll('*').remove();
+    defs.selectAll('[id^="fG_"]').remove();
+
+    flows.forEach(([fromId, toId, vol], i) => {
+      const from = allNodes[fromId], to = allNodes[toId];
+      if (!from || !to) return;
+      const [x1,y1] = projection([from.lon,from.lat]);
+      const [x2,y2] = projection([to.lon,to.lat]);
+      if (!x1 || !x2) return;
+
+      const dx=x2-x1, dy=y2-y1, dist=Math.sqrt(dx*dx+dy*dy);
+      const curveOffset = Math.min(dist*0.25, 120);
+      const mx=(x1+x2)/2, my=(y1+y2)/2;
+      const nx=-dy/dist, ny=dx/dist;
+      const cx=mx+nx*curveOffset, cy=my+ny*curveOffset;
+      const strokeW = 0.5 + (vol/maxFlowVol)*3.5;
+
+      let opacity = 0.25 + (vol/maxFlowVol)*0.45;
+
+      const gid = `fG_${i}`;
+      const grad = defs.append('linearGradient').attr('id',gid).attr('gradientUnits','userSpaceOnUse').attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2);
+      grad.append('stop').attr('offset','0%').attr('stop-color','var(--export)').attr('stop-opacity',opacity);
+      grad.append('stop').attr('offset','100%').attr('stop-color','var(--import)').attr('stop-opacity',opacity*0.6);
+
+      flowGroup.append('path')
+        .attr('d',`M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`)
+        .attr('fill','none').attr('stroke',`url(#${gid})`).attr('stroke-width',strokeW).attr('stroke-linecap','round')
+        .style('opacity',0)
+        .on('mouseover', function(event) {
+          d3.select(this).attr('stroke-width',strokeW+2).style('opacity',1);
+          showTooltip(event,`<div class="tooltip-name">${from.name} → ${to.name}</div><div class="tooltip-vol">${vol} MTPA</div>`);
+        })
+        .on('mouseout', function() { d3.select(this).attr('stroke-width',strokeW).style('opacity',null); hideTooltip(); })
+        .transition().delay(i*10).duration(500).style('opacity',1);
+    });
+  }
+  drawFlows();
+
+  // Exporter circles
+  const expScale = d3.scaleSqrt().domain([0,115]).range([3,20]);
+  g.selectAll('.exp-circle').data(exporters).enter().append('circle')
+    .attr('cx',d=>projection([d.lon,d.lat])[0]).attr('cy',d=>projection([d.lon,d.lat])[1])
+    .attr('r',d=>expScale(d.vol)).attr('fill','var(--export)').attr('fill-opacity',0.7)
+    .attr('stroke','var(--export)').attr('stroke-width',1.5).attr('stroke-opacity',0.3).style('cursor','pointer')
+    .on('mouseover',function(event,d){
+      d3.select(this).attr('fill-opacity',1).attr('stroke-opacity',0.8);
+      showTooltip(event,`<div class="tooltip-name">${d.name}</div><div class="tooltip-role exporter">Экспортёр · 2025</div><div class="tooltip-vol">${d.vol} MTPA</div><div style="font-size:0.72rem;color:var(--text);margin-top:0.3rem">${d.details}</div>`);
+    })
+    .on('mouseout',function(){ d3.select(this).attr('fill-opacity',0.7).attr('stroke-opacity',0.3); hideTooltip(); })
+    .on('click',function(event,d){
+      event.stopPropagation();
+      showTooltip(event,`<div class="tooltip-name">${d.name}</div><div class="tooltip-role exporter">Экспортёр · 2025</div><div class="tooltip-vol">${d.vol} MTPA</div><div style="font-size:0.72rem;color:var(--text);margin-top:0.3rem">${d.details}</div>`);
+    });
+
+  const topExp = exporters.filter(e => e.vol >= 20);
+  g.selectAll('.exp-label').data(topExp).enter().append('text')
+    .attr('x',d=>projection([d.lon,d.lat])[0]).attr('y',d=>projection([d.lon,d.lat])[1]-expScale(d.vol)-5)
+    .attr('text-anchor','middle').attr('fill','var(--export)').attr('font-family','var(--mono)').attr('font-size','9px').attr('font-weight','600')
+    .text(d=>`${d.vol}`);
+
+  // Importer circles
+  const impScale = d3.scaleSqrt().domain([0,70]).range([3,16]);
+  g.selectAll('.imp-circle').data(importers).enter().append('circle')
+    .attr('cx',d=>projection([d.lon,d.lat])[0]).attr('cy',d=>projection([d.lon,d.lat])[1])
+    .attr('r',d=>impScale(d.vol)).attr('fill','var(--import)').attr('fill-opacity',0.6)
+    .attr('stroke','var(--import)').attr('stroke-width',1.5).attr('stroke-opacity',0.25).style('cursor','pointer')
+    .on('mouseover',function(event,d){
+      d3.select(this).attr('fill-opacity',1).attr('stroke-opacity',0.8);
+      showTooltip(event,`<div class="tooltip-name">${d.name}</div><div class="tooltip-role importer">Импортёр · 2025</div><div class="tooltip-vol">${d.vol} MTPA</div><div style="font-size:0.72rem;color:var(--text);margin-top:0.3rem">${d.details}</div>`);
+    })
+    .on('mouseout',function(){ d3.select(this).attr('fill-opacity',0.6).attr('stroke-opacity',0.25); hideTooltip(); })
+    .on('click',function(event,d){
+      event.stopPropagation();
+      showTooltip(event,`<div class="tooltip-name">${d.name}</div><div class="tooltip-role importer">Импортёр · 2025</div><div class="tooltip-vol">${d.vol} MTPA</div><div style="font-size:0.72rem;color:var(--text);margin-top:0.3rem">${d.details}</div>`);
+    });
+
+  const topImp = importers.filter(i => i.vol >= 15);
+  g.selectAll('.imp-label').data(topImp).enter().append('text')
+    .attr('x',d=>projection([d.lon,d.lat])[0]).attr('y',d=>projection([d.lon,d.lat])[1]-impScale(d.vol)-5)
+    .attr('text-anchor','middle').attr('fill','var(--import)').attr('font-family','var(--mono)').attr('font-size','9px').attr('font-weight','600')
+    .text(d=>`${d.vol}`);
+
+  // Price hubs
+
+  // Hormuz
+  const [hzx,hzy] = projection([hormuz.lon,hormuz.lat]);
+  g.append('circle').attr('cx',hzx).attr('cy',hzy).attr('r',14).attr('fill','var(--danger)').attr('fill-opacity',0.08)
+    .attr('stroke','var(--danger)').attr('stroke-width',2).attr('stroke-opacity',0.6).attr('stroke-dasharray','4,3');
+  g.append('circle').attr('cx',hzx).attr('cy',hzy).attr('r',22).attr('fill','none')
+    .attr('stroke','var(--danger)').attr('stroke-width',0.8).attr('stroke-opacity',0.25).attr('stroke-dasharray','2,4');
+  g.append('text').attr('x',hzx).attr('y',hzy+4).attr('text-anchor','middle').attr('fill','var(--danger)')
+    .attr('font-size','14px').attr('font-weight','700').text('✕');
+  g.append('text').attr('x',hzx).attr('y',hzy+22).attr('text-anchor','middle').attr('fill','var(--danger)')
+    .attr('font-family','var(--mono)').attr('font-size','7px').attr('font-weight','600').text('HORMUZ · ЗАКРЫТ · 02.03.2026');
+
+
+
+
+}).catch(err => {
+  const fb = document.getElementById('map-fallback');
+  if (fb) {
+    const spinner = document.getElementById('fb-spinner');
+    if (spinner) spinner.style.display = 'none';
+    const txt = document.getElementById('fb-text');
+    const url = window.location.href;
+    if (txt) txt.innerHTML = '<div style="font-size:2rem;margin-bottom:1rem;">🗺️</div>' +
+      '<div style="color:#eef1f7;font-size:1rem;font-weight:600;margin-bottom:0.6rem;">Карта не загрузилась</div>' +
+      '<div style="color:#8a92a6;font-size:0.82rem;line-height:1.6;margin-bottom:1.2rem;">' +
+      'Встроенный браузер не смог загрузить данные.<br>Откройте в Safari или Chrome:</div>' +
+      '<a href="' + url + '" target="_blank" rel="noopener" style="' +
+        'display:inline-block;background:#3b82f6;color:#fff;font-size:0.9rem;font-weight:600;' +
+        'padding:0.7rem 1.5rem;border-radius:8px;text-decoration:none;margin-bottom:0.8rem;' +
+        'box-shadow:0 4px 12px rgba(59,130,246,0.3);">' +
+        '↗ Открыть в Safari</a>' +
+      '<div style="color:#6b7280;font-size:0.7rem;margin-top:0.5rem;">или скопируйте ссылку:</div>' +
+      '<div style="color:#8a92a6;font-family:monospace;font-size:0.65rem;margin-top:0.4rem;' +
+        'background:rgba(255,255,255,0.05);padding:0.4rem 0.6rem;border-radius:4px;word-break:break-all;">' + url + '</div>';
+  }
+});
+
+// Timeout fallback — 5 seconds, then show "Open in Safari" button
+setTimeout(() => {
+  const fb = document.getElementById('map-fallback');
+  if (fb && fb.style.display !== 'none') {
+    const spinner = document.getElementById('fb-spinner');
+    if (spinner) spinner.style.display = 'none';
+    const txt = document.getElementById('fb-text');
+    if (txt && !txt.innerHTML.includes('не загрузилась')) {
+      const url = window.location.href;
+      txt.innerHTML = '<div style="font-size:2rem;margin-bottom:1rem;">🗺️</div>' +
+        '<div style="color:#eef1f7;font-size:1rem;font-weight:600;margin-bottom:0.6rem;">Карта загружается медленно</div>' +
+        '<div style="color:#8a92a6;font-size:0.82rem;line-height:1.6;margin-bottom:1.2rem;">' +
+        'Встроенный браузер Telegram ограничивает загрузку.<br>Откройте в полноценном браузере:</div>' +
+        '<a href="' + url + '" target="_blank" rel="noopener" style="' +
+          'display:inline-block;background:#3b82f6;color:#fff;font-size:0.9rem;font-weight:600;' +
+          'padding:0.7rem 1.5rem;border-radius:8px;text-decoration:none;margin-bottom:0.8rem;' +
+          'box-shadow:0 4px 12px rgba(59,130,246,0.3);">' +
+          '↗ Открыть в Safari</a>' +
+        '<div style="color:#6b7280;font-size:0.7rem;margin-top:0.5rem;">или скопируйте ссылку и вставьте в браузер</div>' +
+        '<div style="color:#8a92a6;font-family:monospace;font-size:0.65rem;margin-top:0.4rem;' +
+          'background:rgba(255,255,255,0.05);padding:0.4rem 0.6rem;border-radius:4px;word-break:break-all;">' + url + '</div>';
+    }
+  }
+}, 5000);
+
+// Stats panel — top exporters 
+const statsPanel = document.querySelector('.stats-panel');
+if (statsPanel) {
+  const sorted = [...exporters].sort((a,b) => b.vol - a.vol).slice(0,10);
+  const maxV = sorted[0].vol;
+  let html = '';
+  sorted.forEach((e, i) => {
+    const pct = (e.vol/maxV*100).toFixed(0);
+    const col = i < 3 ? 'var(--export)' : 'rgba(245,158,11,0.5)';
+    html += `<div class="stats-row">
+      <span class="stats-rank">${i+1}</span>
+      <span class="stats-country">${e.name}</span>
+      <div class="stats-bar-wrap"><div class="stats-bar" style="width:${pct}%;background:${col}"></div></div>
+      <span class="stats-val">${e.vol}</span>
+    </div>`;
+  });
+  statsPanel.innerHTML = `<div class="stats-title">Топ экспортёры 2025 (MTPA)</div>${html}`;
+
+  // Populate mobile exporters panel too
+  const mobExp = document.getElementById('mob-exporters');
+  if (mobExp) mobExp.innerHTML = `<div class="stats-title">Топ экспортёры 2025 (MTPA)</div>${html}`;
+}
+
+// ── MOBILE TAB SWITCHING ──
+document.querySelectorAll('.mob-tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    const panelId = this.dataset.panel;
+    const isActive = this.classList.contains('active');
+
+    // Close all
+    document.querySelectorAll('.mob-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.mobile-panel').forEach(p => p.classList.remove('show'));
+
+    // Toggle (close if was active, open if wasn't)
+    if (!isActive) {
+      this.classList.add('active');
+      const panel = document.getElementById(panelId);
+      if (panel) panel.classList.add('show');
+    }
+  });
+});
+
+// ── TOUCH SUPPORT ──
+// On mobile, tap on map background to dismiss tooltip
+const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+if (isMobile) {
+  document.getElementById('map-container').addEventListener('click', function(e) {
+    if (e.target.tagName === 'svg' || e.target.classList.contains('country')) {
+      document.getElementById('tooltip').classList.remove('show');
+    }
+  });
+}
+
+} // end of else (D3 loaded successfully)
+</script>
+</body>
+</html>
